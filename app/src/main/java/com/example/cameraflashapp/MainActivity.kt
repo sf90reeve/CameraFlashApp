@@ -32,7 +32,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cameraExecutor: ExecutorService
 
     // <-- change this to your Pi's IP/URL if needed -->
-    private val piUrl = "http://192.168.0.142:5000/led/flash"
+    private val piUrl = "http://10.95.94.95:5000/flash"
 
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
