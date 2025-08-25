@@ -17,8 +17,10 @@ import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.ExecutorService
@@ -31,7 +33,7 @@ class MainActivity : AppCompatActivity() {
     private var imageCapture: ImageCapture? = null
     private lateinit var cameraExecutor: ExecutorService
 
-    // <-- change this to your Pi's IP/URL if needed -->
+    // 🔥 replace with YOUR Pi IP
     private val piUrl = "http://10.95.94.95:5000/flash"
 
     private val requestPermissionLauncher =
@@ -52,20 +54,16 @@ class MainActivity : AppCompatActivity() {
 
         cameraExecutor = Executors.newSingleThreadExecutor()
 
-        // Ask for camera permission and start camera if granted
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
-            PackageManager.PERMISSION_GRANTED) {
+            PackageManager.PERMISSION_GRANTED
+        ) {
             startCamera()
         } else {
             requestPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
 
         captureBtn.setOnClickListener {
-            // Fire external flash (non-blocking)
-            triggerExternalFlash()
-
-            // Capture and save image to gallery
-            takePhoto()
+            takePhotoAndFlash()
         }
     }
 
@@ -74,12 +72,10 @@ class MainActivity : AppCompatActivity() {
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
 
-            // Preview use case
             val preview = Preview.Builder().build().also {
                 it.setSurfaceProvider(previewView.surfaceProvider)
             }
 
-            // ImageCapture use case
             imageCapture = ImageCapture.Builder()
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                 .build()
@@ -100,11 +96,14 @@ class MainActivity : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
-    private fun takePhoto() {
+    private fun takePhotoAndFlash() {
         val capture = imageCapture ?: run {
             Toast.makeText(this, "Camera not ready", Toast.LENGTH_SHORT).show()
             return
         }
+
+        // 🔥 Trigger flash right before capturing
+        triggerExternalFlash()
 
         val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
             .format(System.currentTimeMillis())
@@ -135,11 +134,8 @@ class MainActivity : AppCompatActivity() {
                     Log.d(TAG, "Photo saved: $savedUri")
                     Toast.makeText(baseContext, "Photo saved to gallery", Toast.LENGTH_SHORT).show()
 
-                    // Ask media scanner to index (ensures gallery shows it quickly)
                     savedUri?.let { uri ->
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                            // On Q+ the MediaStore insertion is sufficient in most cases,
-                            // but we still broadcast to ensure quick visibility in some gallery apps:
                             sendBroadcast(Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, uri))
                         } else {
                             sendBroadcast(Intent(Intent.ACTION_MEDIA_MOUNTED, uri))
@@ -151,19 +147,29 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun triggerExternalFlash() {
-        // Non-blocking network call on a background thread
         Thread {
             try {
                 val client = OkHttpClient()
-                val request = Request.Builder().url(piUrl).build()
+                val request = Request.Builder()
+                    .url(piUrl)   // GET instead of POST
+                    .get()
+                    .build()
                 client.newCall(request).execute().use { response ->
-                    Log.d(TAG, "Flash response: ${response.code} ${response.message}")
+                    val body = response.body?.string()
+                    Log.d(TAG, "Flash response: ${response.code} ${response.message} $body")
+                    runOnUiThread {
+                        Toast.makeText(this, "Flash: $body", Toast.LENGTH_SHORT).show()
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Flash request failed: ${e.message}", e)
+                runOnUiThread {
+                    Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             }
         }.start()
     }
+
 
     override fun onDestroy() {
         super.onDestroy()
