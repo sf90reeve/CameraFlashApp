@@ -7,9 +7,12 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
 import android.widget.Button
+import android.widget.SeekBar
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -17,10 +20,8 @@ import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.ExecutorService
@@ -32,8 +33,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var previewView: PreviewView
     private var imageCapture: ImageCapture? = null
     private lateinit var cameraExecutor: ExecutorService
+    private var camera: Camera? = null
 
-    // 🔥 replace with YOUR Pi IP
     private val piUrl = "http://10.95.94.95:5000/flash"
 
     private val requestPermissionLauncher =
@@ -51,6 +52,8 @@ class MainActivity : AppCompatActivity() {
 
         previewView = findViewById(R.id.previewView)
         val captureBtn: Button = findViewById(R.id.captureBtn)
+        val galleryBtn: Button = findViewById(R.id.galleryBtn)
+        val zoomSeekBar: SeekBar = findViewById(R.id.zoomSeekBar)
 
         cameraExecutor = Executors.newSingleThreadExecutor()
 
@@ -63,8 +66,26 @@ class MainActivity : AppCompatActivity() {
         }
 
         captureBtn.setOnClickListener {
-            takePhotoAndFlash()
+            triggerExternalFlash()
+            Handler(Looper.getMainLooper()).postDelayed({
+                takePhoto()
+            }, 200)
         }
+
+        galleryBtn.setOnClickListener {
+            openGallery()
+        }
+
+        zoomSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser && camera != null) {
+                    val zoomRatio = progress / 100f
+                    camera?.cameraControl?.setLinearZoom(zoomRatio)
+                }
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
     }
 
     private fun startCamera() {
@@ -84,7 +105,7 @@ class MainActivity : AppCompatActivity() {
 
             try {
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
+                camera = cameraProvider.bindToLifecycle(
                     this,
                     cameraSelector,
                     preview,
@@ -96,14 +117,11 @@ class MainActivity : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
-    private fun takePhotoAndFlash() {
+    private fun takePhoto() {
         val capture = imageCapture ?: run {
             Toast.makeText(this, "Camera not ready", Toast.LENGTH_SHORT).show()
             return
         }
-
-        // 🔥 Trigger flash right before capturing
-        triggerExternalFlash()
 
         val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
             .format(System.currentTimeMillis())
@@ -151,25 +169,30 @@ class MainActivity : AppCompatActivity() {
             try {
                 val client = OkHttpClient()
                 val request = Request.Builder()
-                    .url(piUrl)   // GET instead of POST
+                    .url(piUrl)
                     .get()
                     .build()
                 client.newCall(request).execute().use { response ->
                     val body = response.body?.string()
                     Log.d(TAG, "Flash response: ${response.code} ${response.message} $body")
-                    runOnUiThread {
-                        Toast.makeText(this, "Flash: $body", Toast.LENGTH_SHORT).show()
-                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Flash request failed: ${e.message}", e)
-                runOnUiThread {
-                    Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                }
             }
         }.start()
     }
 
+    private fun openGallery() {
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            type = "image/*"
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "No gallery app found", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     override fun onDestroy() {
         super.onDestroy()
