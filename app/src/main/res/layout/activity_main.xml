@@ -7,14 +7,37 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <androidx.camera.view.PreviewView
-        android:id="@+id/previewView"
+    <EditText
+        android:id="@+id/patientIdInput"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:hint="Enter Patient ID"
+        android:textColor="#FFFFFF"
+        android:textColorHint="#AAAAAA"
+        android:background="#222222"
+        android:padding="12dp"
+        android:inputType="text"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_margin="12dp"/>
+
+    <!-- Camera Preview + Overlay Container -->
+    <FrameLayout
+        android:id="@+id/overlayContainer"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/patientIdInput"
         app:layout_constraintBottom_toTopOf="@+id/zoomSeekBar"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextureView
+            android:id="@+id/previewView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+    </FrameLayout>
 
     <SeekBar
         android:id="@+id/zoomSeekBar"
@@ -53,5 +76,17 @@
         android:layout_marginEnd="40dp"
         app:layout_constraintEnd_toStartOf="@id/captureBtn"
         app:layout_constraintBottom_toBottomOf="@id/captureBtn" />
+
+    <Button
+        android:id="@+id/filterToggleBtn"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Filter OFF"
+        android:background="#444444"
+        android:textColor="#FFFFFF"
+        android:padding="8dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@id/patientIdInput"
+        android:layout_marginEnd="12dp" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
