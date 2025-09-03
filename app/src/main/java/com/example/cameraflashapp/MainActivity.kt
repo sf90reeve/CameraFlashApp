@@ -331,7 +331,7 @@ class MainActivity : AppCompatActivity() {
         }
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            val radius = Math.min(width, height) / 2.25f
+            val radius = Math.min(width, height) / 2.26f
             val cx = width / 2f
             val cy = height / 2f
             canvas.drawCircle(cx, cy, radius, outlinePaint)
