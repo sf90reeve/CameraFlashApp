@@ -81,7 +81,7 @@
         android:id="@+id/filterToggleBtn"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Filter OFF"
+        android:text="Overlay OFF"
         android:background="#444444"
         android:textColor="#FFFFFF"
         android:padding="8dp"

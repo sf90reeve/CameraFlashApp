@@ -41,7 +41,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var focusSeekBar: SeekBar
 
     private var overlayEnabled = false
-    private val piUrl = "http://10.95.94.95:5000/flash"
+    private val piUrl = "http://10.238.221.95:5000/flash"
 
     private lateinit var cameraManager: CameraManager
     private var cameraDevice: CameraDevice? = null
@@ -51,6 +51,7 @@ class MainActivity : AppCompatActivity() {
     private var captureRequestBuilder: CaptureRequest.Builder? = null
 
     private lateinit var imageReader: ImageReader
+    private var currentZoomRect: Rect? = null
 
     private val backgroundHandlerThread = HandlerThread("CameraBackground").apply { start() }
     private val backgroundHandler = Handler(backgroundHandlerThread.looper)
@@ -73,11 +74,13 @@ class MainActivity : AppCompatActivity() {
         galleryBtn = findViewById(R.id.galleryBtn)
         zoomSeekBar = findViewById(R.id.zoomSeekBar)
 
+        // Circle overlay
         val rootLayout: FrameLayout = findViewById(R.id.overlayContainer)
         circleOverlay = CircleOverlay(this)
         rootLayout.addView(circleOverlay)
         circleOverlay.visibility = View.GONE
 
+        // Manual focus bar
         focusSeekBar = SeekBar(this).apply {
             max = 100
             progress = 0
@@ -118,6 +121,7 @@ class MainActivity : AppCompatActivity() {
             overlayToggleBtn.text = if (overlayEnabled) "Overlay ON" else "Overlay OFF"
         }
 
+        // Zoom control
         zoomSeekBar.max = 100
         zoomSeekBar.progress = 0
         zoomSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -134,6 +138,7 @@ class MainActivity : AppCompatActivity() {
                     val cropY = (rect.height() - cropH) / 2
                     val zoomRect = Rect(cropX, cropY, cropX + cropW, cropY + cropH)
 
+                    currentZoomRect = zoomRect
                     captureRequestBuilder?.set(CaptureRequest.SCALER_CROP_REGION, zoomRect)
                     captureSession?.setRepeatingRequest(captureRequestBuilder!!.build(), null, backgroundHandler)
                 }
@@ -142,6 +147,7 @@ class MainActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(sb: SeekBar?) {}
         })
 
+        // Manual focus control
         focusSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
@@ -159,6 +165,7 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    // Surface listener
     private val surfaceTextureListener = object : TextureView.SurfaceTextureListener {
         override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
             openCamera()
@@ -230,10 +237,11 @@ class MainActivity : AppCompatActivity() {
             captureBuilder.addTarget(imageReader.surface)
             captureBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
 
-            // ✅ Copy zoom & focus from preview
-            val zoom = captureRequestBuilder?.get(CaptureRequest.SCALER_CROP_REGION)
-            if (zoom != null) captureBuilder.set(CaptureRequest.SCALER_CROP_REGION, zoom)
+            currentZoomRect?.let {
+                captureBuilder.set(CaptureRequest.SCALER_CROP_REGION, it)
+            }
 
+            // keep current manual focus
             val focusMode = captureRequestBuilder?.get(CaptureRequest.CONTROL_AF_MODE)
             if (focusMode != null) captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, focusMode)
 
@@ -246,11 +254,25 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ✅ Safe MediaStore-based save
     private fun saveImage(bytes: ByteArray) {
         val patientId = patientIdInput.text.toString().trim()
         val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
         val fileName = if (patientId.isNotEmpty()) "${patientId}_$timeStamp.jpg" else "IMG_$timeStamp.jpg"
 
+        // Decode to bitmap
+        var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+
+        // Fix orientation
+        val characteristics = cameraManager.getCameraCharacteristics(cameraId!!)
+        val sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
+        val deviceRotation = (windowManager.defaultDisplay.rotation * 90) % 360
+        val rotation = (sensorOrientation - deviceRotation + 360) % 360
+
+        val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
+        bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+
+        // ✅ Save via MediaStore
         val contentValues = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
@@ -261,8 +283,8 @@ class MainActivity : AppCompatActivity() {
 
         val uri: Uri? = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
         uri?.let {
-            contentResolver.openOutputStream(it).use { outStream ->
-                outStream?.write(bytes)
+            contentResolver.openOutputStream(it)?.use { outStream ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outStream)
             }
             runOnUiThread {
                 Toast.makeText(this, "Saved: $fileName", Toast.LENGTH_SHORT).show()
@@ -309,7 +331,7 @@ class MainActivity : AppCompatActivity() {
         }
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            val radius = Math.min(width, height) / 3f
+            val radius = Math.min(width, height) / 2.25f
             val cx = width / 2f
             val cy = height / 2f
             canvas.drawCircle(cx, cy, radius, outlinePaint)
